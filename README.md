@@ -12,6 +12,10 @@ HOSTNAME=nextcloud.example.com
 echo "$HOSTNAME" > hosts
 ```
 
+### Set external variables
+
+External variables are set in `external_vars.yml`.
+
 ### Setup Nextcloud
 
 A user `ansible` is created and `password` sets the password for that user.
