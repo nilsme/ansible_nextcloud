@@ -1,0 +1,51 @@
+---
+ - hosts: all
+   become: yes
+   vars_files:
+   - external_vars.yml 
+   tasks:
+   - name: Create user account and add user to sudo group
+     user:
+       name: "{{ ansible_user }}"
+       shell: /bin/bash
+       groups: sudo
+     register: user_created
+   - name: Change password for user account on create
+     user:
+       name: "{{ ansible_user }}"
+       update_password: always
+       password: "{{ upassword | password_hash('sha512') }}"
+     when: user_created.changed
+   - name: Set authorized key for user cloud copying it from current user
+     ansible.posix.authorized_key:
+       user: "{{ ansible_user }}"
+       state: present
+       key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+   - name: Deactivate root ssh login
+     ansible.builtin.lineinfile:
+       path: /etc/ssh/sshd_config
+       regexp: '^PermitRootLogin'
+       line: PermitRootLogin no
+     register: sshd
+   - name: Restart sshd service after disabling root ssh login
+     ansible.builtin.service:
+       name: sshd
+       state: restarted
+     when: sshd.changed
+   - name: Install nextcloud snap
+     snap:
+       name=nextcloud
+       state=present
+     register: nextcloud
+   - name: Install nextcloud app
+     ansible.builtin.shell: nextcloud.manual-install "{{ nextcloud_admin }}" "{{ cloudpassword }}"
+     when: nextcloud.changed
+   - name: Set nextcloud trusted domain
+     ansible.builtin.shell: nextcloud.occ config:system:set trusted_domains 1 --value="{{ nextcloud_domain }}"
+     when: nextcloud.changed
+   - name: Restart nextcloud service
+     ansible.builtin.shell: snap restart nextcloud
+     when: nextcloud.changed
+   - name: Set up ssl with lets-encrypt
+     script: setup_ssl.sh "{{ lets_encrypt_email }}" "{{ nextcloud_domain }}"
+     when: nextcloud.changed
